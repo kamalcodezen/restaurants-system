@@ -1,13 +1,19 @@
 'use client';
-import { useEffect, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useEffect, useState, Suspense } from 'react';
+import { useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 
-export default function CustomerBillSummary() {
+function CustomerBillContent() {
   const { id } = useParams();
+  const searchParams = useSearchParams();
+  const success = searchParams.get('success');
+  const canceled = searchParams.get('canceled');
+
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [paying, setPaying] = useState(false);
+  const [payError, setPayError] = useState('');
 
   async function loadBillSummary() {
     try {
@@ -24,6 +30,32 @@ export default function CustomerBillSummary() {
       setError('Could not connect to server');
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleStripePay() {
+    setPaying(true);
+    setPayError('');
+    try {
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+      const res = await fetch(`${API_URL}/api/payments/checkout-session`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ orderId: id }),
+      });
+      const data = await res.json();
+      if (data.success && data.data?.url) {
+        window.location.href = data.data.url;
+      } else {
+        setPayError(data.error || 'Failed to initialize payment session');
+        setPaying(false);
+      }
+    } catch (err) {
+      console.error(err);
+      setPayError('Could not contact payment server');
+      setPaying(false);
     }
   }
 
@@ -63,6 +95,23 @@ export default function CustomerBillSummary() {
           <p className="text-xs text-base-content/60 font-semibold">123 Foodie Street, Flavor Town</p>
           <p className="text-xs text-base-content/60 font-semibold">Phone: 123-456-7890</p>
         </div>
+
+        {/* Success/Canceled Alerts */}
+        {success && (
+          <div className="alert alert-success text-xs font-bold py-3 text-center no-print">
+            Payment successful! Bill is marked paid.
+          </div>
+        )}
+        {canceled && (
+          <div className="alert alert-warning text-xs font-bold py-3 text-center no-print">
+            Payment was cancelled. You can try again.
+          </div>
+        )}
+        {payError && (
+          <div className="alert alert-error text-xs font-bold py-3 text-center no-print">
+            {payError}
+          </div>
+        )}
 
         {/* Invoice metadata */}
         <div className="text-xs font-semibold space-y-1">
@@ -119,18 +168,40 @@ export default function CustomerBillSummary() {
         </div>
 
         {/* Footer/Receipt controls */}
-        <div className="text-center pt-4 space-y-4">
+        <div className="text-center pt-4 space-y-3">
+          {!isPaid && (
+            <button 
+              onClick={handleStripePay} 
+              disabled={paying}
+              className="btn btn-primary btn-sm w-full no-print font-bold uppercase tracking-wider"
+            >
+              {paying ? <span className="loading loading-spinner loading-xs"></span> : 'Pay Online with Stripe'}
+            </button>
+          )}
+
           <button 
             onClick={() => window.print()} 
-            className="btn btn-outline btn-sm w-full no-print"
+            className="btn btn-outline btn-sm w-full no-print font-bold uppercase tracking-wider"
           >
             Print Receipt
           </button>
-          <Link href={`/order/${id}`} className="text-xs text-primary font-bold hover:underline block no-print">
+          <Link href={`/order/${id}`} className="text-xs text-primary font-bold hover:underline block no-print pt-2">
             Back to Status Tracker
           </Link>
         </div>
       </div>
     </div>
+  );
+}
+
+export default function CustomerBillSummary() {
+  return (
+    <Suspense fallback={
+      <div className="flex min-h-screen items-center justify-center bg-base-100">
+        <span className="loading loading-spinner loading-lg text-primary"></span>
+      </div>
+    }>
+      <CustomerBillContent />
+    </Suspense>
   );
 }

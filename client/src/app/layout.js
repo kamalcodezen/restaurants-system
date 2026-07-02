@@ -1,5 +1,8 @@
 import { Outfit, Plus_Jakarta_Sans } from "next/font/google";
+import '@gravity-ui/uikit/styles/fonts.css';
+import '@gravity-ui/uikit/styles/styles.css';
 import "./globals.css";
+import GravityProvider from "@/components/GravityProvider";
 
 const outfit = Outfit({
   variable: "--font-outfit",
@@ -23,7 +26,11 @@ export default function RootLayout({ children }) {
       data-theme="sweetrose"
       className={`${outfit.variable} ${jakarta.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        <GravityProvider>
+          {children}
+        </GravityProvider>
+      </body>
     </html>
   );
 }

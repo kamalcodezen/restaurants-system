@@ -5,8 +5,11 @@ import { MongoClient, ObjectId } from 'mongodb';
 import { betterAuth } from 'better-auth';
 import { mongodbAdapter } from 'better-auth/adapters/mongodb';
 import { toNodeHandler } from 'better-auth/node';
+import Stripe from 'stripe';
 
 dotenv.config();
+
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 const app = express();
 const port = process.env.PORT || 5000;
@@ -52,8 +55,105 @@ app.use(cors({
 // Mount Better Auth handler BEFORE body-parser middlewares
 app.all('/api/auth/*', toNodeHandler(auth));
 
+// Stripe webhook endpoint (needs raw body, so registered BEFORE express.json)
+app.post('/api/payments/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+  const sig = req.headers['stripe-signature'];
+  let event;
+
+  try {
+    event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
+  } catch (err) {
+    console.error('Webhook signature verification failed:', err.message);
+    return res.status(400).send(`Webhook Error: ${err.message}`);
+  }
+
+  if (event.type === 'checkout.session.completed') {
+    const session = event.data.object;
+    const orderId = session.metadata.orderId;
+    
+    try {
+      console.log(`Stripe payment completed for order: ${orderId}`);
+      const success = await processOrderPayment(orderId, 'stripe');
+      if (success) {
+        return res.json({ received: true, processed: true });
+      } else {
+        return res.status(400).json({ received: true, processed: false, error: 'Order not found' });
+      }
+    } catch (err) {
+      console.error('Error processing payment in webhook:', err);
+      return res.status(500).send('Internal Server Error');
+    }
+  }
+
+  res.json({ received: true });
+});
+
 // Mount express.json AFTER Better Auth handler
 app.use(express.json());
+
+// Helper to process payment for an order (both Stripe and manual Cash/Card)
+async function processOrderPayment(orderId, paymentMethod, cashierId = null) {
+  const orderObjectId = new ObjectId(orderId.toString());
+  const order = await db.collection('orders').findOne({ _id: orderObjectId });
+  if (!order) return false;
+
+  let bill = await db.collection('bills').findOne({ orderId: orderObjectId });
+  
+  const subtotal = order.subtotal;
+  const taxRate = 0.10; // 10% tax rate
+  const tax = subtotal * taxRate;
+  const total = subtotal + tax;
+
+  if (!bill) {
+    bill = {
+      orderId: orderObjectId,
+      orderNumber: order.orderNumber,
+      type: order.type,
+      tableId: order.tableId,
+      subtotal,
+      tax,
+      total,
+      status: 'unpaid',
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+    const result = await db.collection('bills').insertOne(bill);
+    bill._id = result.insertedId;
+  }
+
+  if (bill.status === 'paid') {
+    return true;
+  }
+
+  const updates = {
+    status: 'paid',
+    paymentMethod,
+    paidAt: new Date(),
+    updatedAt: new Date()
+  };
+  if (cashierId) {
+    updates.cashierId = new ObjectId(cashierId.toString());
+  }
+
+  await db.collection('bills').updateOne(
+    { _id: bill._id },
+    { $set: updates }
+  );
+
+  await db.collection('orders').updateOne(
+    { _id: orderObjectId },
+    { $set: { status: 'billed', updatedAt: new Date() } }
+  );
+
+  if (order.type === 'dine-in' && order.tableId) {
+    await db.collection('tables').updateOne(
+      { _id: order.tableId },
+      { $set: { status: 'free', updatedAt: new Date() } }
+    );
+  }
+
+  return true;
+}
 
 // Auth Session Middleware
 const requireAuth = async (req, res, next) => {
@@ -731,6 +831,57 @@ app.get('/api/bills/order/:orderId', requireAuth, async (req, res) => {
   }
 });
 
+// Public: Create Stripe Checkout Session
+app.post('/api/payments/checkout-session', async (req, res) => {
+  try {
+    const { orderId } = req.body;
+    if (!orderId) {
+      return res.status(400).json({ success: false, error: 'Order ID is required' });
+    }
+
+    const order = await db.collection('orders').findOne({ _id: new ObjectId(orderId) });
+    if (!order) {
+      return res.status(404).json({ success: false, error: 'Order not found' });
+    }
+
+    if (order.status === 'billed') {
+      return res.status(400).json({ success: false, error: 'Order is already paid' });
+    }
+
+    const subtotal = order.subtotal || 0;
+    const tax = subtotal * 0.10; // 10% tax rate
+    const total = subtotal + tax;
+
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: ['card'],
+      line_items: [
+        {
+          price_data: {
+            currency: 'usd',
+            product_data: {
+              name: `Order ${order.orderNumber}`,
+              description: `Dining Bill for Gourmet Haven`,
+            },
+            unit_amount: Math.round(total * 100), // in cents
+          },
+          quantity: 1,
+        },
+      ],
+      mode: 'payment',
+      success_url: `${process.env.CLIENT_URL || 'http://localhost:3000'}/order/${orderId}/bill?success=true`,
+      cancel_url: `${process.env.CLIENT_URL || 'http://localhost:3000'}/order/${orderId}/bill?canceled=true`,
+      metadata: {
+        orderId: orderId,
+      },
+    });
+
+    res.json({ success: true, data: { url: session.url } });
+  } catch (error) {
+    console.error('Error creating Stripe session:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // Pay a bill
 app.post('/api/bills/:id/pay', requireAuth, async (req, res) => {
   try {
@@ -755,29 +906,9 @@ app.post('/api/bills/:id/pay', requireAuth, async (req, res) => {
     });
     const cashierId = session?.user?.id ? new ObjectId(session.user.id) : null;
 
-    await db.collection('bills').updateOne(
-      { _id: new ObjectId(id) },
-      { 
-        $set: { 
-          status: 'paid', 
-          paymentMethod, 
-          cashierId,
-          paidAt: new Date(), 
-          updatedAt: new Date() 
-        } 
-      }
-    );
-
-    await db.collection('orders').updateOne(
-      { _id: bill.orderId },
-      { $set: { status: 'billed', updatedAt: new Date() } }
-    );
-
-    if (bill.type === 'dine-in' && bill.tableId) {
-      await db.collection('tables').updateOne(
-        { _id: bill.tableId },
-        { $set: { status: 'free', updatedAt: new Date() } }
-      );
+    const success = await processOrderPayment(bill.orderId, paymentMethod, cashierId);
+    if (!success) {
+      return res.status(400).json({ success: false, error: 'Failed to process payment' });
     }
 
     res.json({ success: true, message: 'Payment recorded successfully' });
