@@ -849,6 +849,40 @@ app.patch('/api/reservations/:id', requireAuth, async (req, res) => {
   }
 });
 
+// Get restaurant settings
+app.get('/api/settings', async (req, res) => {
+  try {
+    const settings = await db.collection('restaurantSettings').findOne({});
+    res.json({ success: true, data: settings });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Update restaurant settings (Admin only)
+app.patch('/api/settings', requireAuth, requireRole(['admin']), async (req, res) => {
+  try {
+    const { name, tagline, phone, address, taxRate } = req.body;
+
+    const updates = { updatedAt: new Date() };
+    if (name !== undefined) updates.name = name;
+    if (tagline !== undefined) updates.tagline = tagline;
+    if (phone !== undefined) updates.phone = phone;
+    if (address !== undefined) updates.address = address;
+    if (taxRate !== undefined) updates.taxRate = Number(taxRate);
+
+    await db.collection('restaurantSettings').updateOne(
+      {},
+      { $set: updates }
+    );
+
+    const updated = await db.collection('restaurantSettings').findOne({});
+    res.json({ success: true, data: updated });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 
 // Seed Function for Settings
 const seedSettings = async () => {
