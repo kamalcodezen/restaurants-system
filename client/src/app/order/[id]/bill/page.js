@@ -1,13 +1,18 @@
 'use client';
-import { useEffect, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useEffect, useState, Suspense } from 'react';
+import { useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 
-export default function CustomerBillSummary() {
+function BillSummaryContent() {
   const { id } = useParams();
+  const searchParams = useSearchParams();
+  
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [paying, setPaying] = useState(false);
+  const [paymentSuccess, setPaymentSuccess] = useState(false);
+  const [paymentCancelled, setPaymentCancelled] = useState(false);
 
   async function loadBillSummary() {
     try {
@@ -29,7 +34,44 @@ export default function CustomerBillSummary() {
 
   useEffect(() => {
     loadBillSummary();
-  }, [id]);
+
+    // Read query flags from Stripe redirection
+    if (searchParams.get('success') === 'true') {
+      setPaymentSuccess(true);
+    }
+    if (searchParams.get('cancelled') === 'true') {
+      setPaymentCancelled(true);
+    }
+  }, [id, searchParams]);
+
+  const handleStripePayment = async () => {
+    setPaying(true);
+    setError('');
+    setPaymentCancelled(false);
+
+    try {
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+      const res = await fetch(`${API_URL}/api/payment/create-checkout-session`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ orderId: id })
+      });
+
+      const data = await res.json();
+      if (data.success && data.url) {
+        window.location.href = data.url; // Redirect to Stripe checkout page
+      } else {
+        setError(data.error || 'Could not initiate Stripe session');
+        setPaying(false);
+      }
+    } catch (err) {
+      console.error(err);
+      setError('Payment gateway connection failed');
+      setPaying(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -52,11 +94,24 @@ export default function CustomerBillSummary() {
   const subtotal = order.subtotal || 0;
   const tax = subtotal * 0.10; // 10% tax rate
   const total = subtotal + tax;
-  const isPaid = order.status === 'billed';
+  const isPaid = order.status === 'billed' || paymentSuccess;
 
   return (
     <div className="min-h-screen bg-base-200 py-12 px-4 flex flex-col items-center">
       <div className="card w-full max-w-md bg-base-100 shadow-md border border-base-300 p-6 md:p-8 space-y-6">
+        {/* Alerts */}
+        {paymentSuccess && (
+          <div className="alert alert-success font-semibold text-xs py-3">
+            <span>Payment received successfully! Thank you for dining with us.</span>
+          </div>
+        )}
+
+        {paymentCancelled && (
+          <div className="alert alert-warning font-semibold text-xs py-3">
+            <span>Online payment was cancelled. You can try again or pay at cashier.</span>
+          </div>
+        )}
+
         {/* Brand header */}
         <div className="text-center space-y-2 border-b border-base-300 pb-6">
           <h1 className="text-2xl font-black font-display text-primary uppercase tracking-wider">Gourmet Haven</h1>
@@ -119,7 +174,17 @@ export default function CustomerBillSummary() {
         </div>
 
         {/* Footer/Receipt controls */}
-        <div className="text-center pt-4 space-y-4">
+        <div className="text-center pt-4 space-y-3">
+          {!isPaid && (
+            <button 
+              onClick={handleStripePayment} 
+              className="btn btn-primary w-full no-print"
+              disabled={paying}
+            >
+              {paying ? <span className="loading loading-spinner"></span> : 'Pay Online with Stripe'}
+            </button>
+          )}
+
           <button 
             onClick={() => window.print()} 
             className="btn btn-outline btn-sm w-full no-print"
@@ -132,5 +197,17 @@ export default function CustomerBillSummary() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function CustomerBillSummary() {
+  return (
+    <Suspense fallback={
+      <div className="flex min-h-screen items-center justify-center bg-base-100">
+        <span className="loading loading-spinner loading-lg text-primary"></span>
+      </div>
+    }>
+      <BillSummaryContent />
+    </Suspense>
   );
 }
