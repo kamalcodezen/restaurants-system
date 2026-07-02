@@ -3,7 +3,7 @@
 ## Batches Progress Tracker
 - **[x] Batch 1:** System Setup & Authentication (US-1) - **100% Complete**
 - **[x] Batch 2:** Menu & Table Management (US-2, US-3) - **100% Complete**
-- **[ ] Batch 3:** Ordering & Kitchen Queue (US-4, US-5) - **0% Complete**
+- **[x] Batch 3:** Ordering & Kitchen Queue (US-4, US-5) - **100% Complete**
 - **[ ] Batch 4:** Billing & Reservations (US-6, US-7) - **0% Complete**
 
 ---
@@ -58,9 +58,9 @@
 ## User Story 4: Ordering (US-4)
 **Description:** As waiter/customer, I want to place orders so the kitchen knows what food to prepare.
 
-- [ ] **Task 4.1:** Implement Orders API (Create Order, Get status).
-- [ ] **Task 4.2:** Create staff new order page (`/dashboard/orders/new`) with table selection and item picker.
-- [ ] **Task 4.3:** Build customer public order tracker (`/order/[id]`) with status timeline.
+- [x] **Task 4.1:** Implement Orders API (Create Order, Get status).
+- [x] **Task 4.2:** Create staff new order page (`/dashboard/orders/new`) with table selection and item picker.
+- [x] **Task 4.3:** Build customer public order tracker (`/order/[id]`) with status timeline.
 
 **Acceptance Criteria:**
 - Orders support dine-in (table selection required) or takeaway.
@@ -73,8 +73,8 @@
 ## User Story 5: Kitchen Queue (US-5)
 **Description:** As kitchen staff, I want to see and update order preparation steps so I can manage food prep.
 
-- [ ] **Task 5.1:** Build Kitchen Queue Kanban board page (`/dashboard/kitchen`) with columns for `pending`, `preparing`, and `ready`.
-- [ ] **Task 5.2:** Implement status transition API endpoint and one-click status buttons.
+- [x] **Task 5.1:** Build Kitchen Queue Kanban board page (`/dashboard/kitchen`) with columns for `pending`, `preparing`, and `ready`.
+- [x] **Task 5.2:** Implement status transition API endpoint and one-click status buttons.
 
 **Acceptance Criteria:**
 - Columns show active orders matching status.

@@ -515,6 +515,172 @@ app.delete('/api/tables/:id', requireAuth, requireRole(['admin']), async (req, r
   }
 });
 
+// Get all orders (staff only)
+app.get('/api/orders', requireAuth, async (req, res) => {
+  try {
+    const { status, tableId } = req.query;
+    const filter = {};
+
+    if (status) filter.status = status;
+    if (tableId) filter.tableId = new ObjectId(tableId);
+
+    const orders = await db.collection('orders').find(filter).sort({ createdAt: -1 }).toArray();
+    res.json({ success: true, data: orders });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Get single order details
+app.get('/api/orders/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const order = await db.collection('orders').findOne({ _id: new ObjectId(id) });
+    if (!order) {
+      return res.status(404).json({ success: false, error: 'Order not found' });
+    }
+    res.json({ success: true, data: order });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Create new order
+app.post('/api/orders', async (req, res) => {
+  try {
+    const { type, tableId, customerName, customerPhone, items, notes } = req.body;
+    
+    if (!type || !items || !items.length) {
+      return res.status(400).json({ success: false, error: 'Type and items are required' });
+    }
+
+    const session = await auth.api.getSession({
+      headers: req.headers
+    });
+    const staffId = session?.user?.id ? new ObjectId(session.user.id) : null;
+
+    let targetTable = null;
+    if (type === 'dine-in') {
+      if (!tableId) {
+        return res.status(400).json({ success: false, error: 'Table ID is required for dine-in' });
+      }
+      targetTable = await db.collection('tables').findOne({ _id: new ObjectId(tableId) });
+      if (!targetTable) {
+        return res.status(404).json({ success: false, error: 'Table not found' });
+      }
+      if (targetTable.status !== 'free') {
+        return res.status(400).json({ success: false, error: 'Table is not free' });
+      }
+    }
+
+    const lineItems = [];
+    let subtotal = 0;
+    for (const item of items) {
+      const dbItem = await db.collection('menuItems').findOne({ _id: new ObjectId(item.menuItemId) });
+      if (!dbItem) {
+        return res.status(404).json({ success: false, error: `Menu item ${item.menuItemId} not found` });
+      }
+      const qty = Number(item.qty) || 1;
+      const lineTotal = Number(dbItem.price) * qty;
+      subtotal += lineTotal;
+
+      lineItems.push({
+        menuItemId: new ObjectId(item.menuItemId),
+        name: dbItem.name,
+        price: Number(dbItem.price),
+        qty,
+        lineTotal
+      });
+    }
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    const count = await db.collection('orders').countDocuments({
+      createdAt: { $gte: today, $lt: tomorrow }
+    });
+
+    const dateStr = today.toISOString().slice(0, 10).replace(/-/g, '');
+    const sequenceStr = String(count + 1).padStart(3, '0');
+    const orderNumber = `ORD-${dateStr}-${sequenceStr}`;
+
+    const newOrder = {
+      orderNumber,
+      type,
+      tableId: tableId ? new ObjectId(tableId) : null,
+      customerName: customerName || '',
+      customerPhone: customerPhone || '',
+      items: lineItems,
+      subtotal,
+      total: subtotal,
+      status: 'pending',
+      staffId,
+      notes: notes || '',
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+
+    const result = await db.collection('orders').insertOne(newOrder);
+    
+    if (type === 'dine-in' && tableId) {
+      await db.collection('tables').updateOne(
+        { _id: new ObjectId(tableId) },
+        { $set: { status: 'occupied', updatedAt: new Date() } }
+      );
+    }
+
+    res.json({ success: true, data: { ...newOrder, _id: result.insertedId } });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Update order status (Staff transition logic)
+app.patch('/api/orders/:id/status', requireAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    const order = await db.collection('orders').findOne({ _id: new ObjectId(id) });
+    if (!order) {
+      return res.status(404).json({ success: false, error: 'Order not found' });
+    }
+
+    const currentStatus = order.status;
+    const newStatus = status;
+
+    const allowed = {
+      'pending': ['preparing'],
+      'preparing': ['ready'],
+      'ready': ['served']
+    };
+
+    if (!allowed[currentStatus] || !allowed[currentStatus].includes(newStatus)) {
+      return res.status(400).json({ success: false, error: `Invalid transition from ${currentStatus} to ${newStatus}` });
+    }
+
+    if (newStatus === 'served' && !['admin', 'waiter'].includes(req.staff.role)) {
+      return res.status(403).json({ success: false, error: 'Only waiters or admins can mark orders as served' });
+    }
+
+    const updates = { status: newStatus, updatedAt: new Date() };
+    if (newStatus === 'served') {
+      updates.servedAt = new Date();
+    }
+
+    await db.collection('orders').updateOne(
+      { _id: new ObjectId(id) },
+      { $set: updates }
+    );
+
+    res.json({ success: true, data: { ...order, ...updates } });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 
 // Seed Function for Settings
 const seedSettings = async () => {
