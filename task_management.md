@@ -2,7 +2,7 @@
 
 ## Batches Progress Tracker
 - **[x] Batch 1:** System Setup & Authentication (US-1) - **100% Complete**
-- **[ ] Batch 2:** Menu & Table Management (US-2, US-3) - **0% Complete**
+- **[x] Batch 2:** Menu & Table Management (US-2, US-3) - **100% Complete**
 - **[ ] Batch 3:** Ordering & Kitchen Queue (US-4, US-5) - **0% Complete**
 - **[ ] Batch 4:** Billing & Reservations (US-6, US-7) - **0% Complete**
 
@@ -30,9 +30,9 @@
 ## User Story 2: Menu & Category Management (US-2)
 **Description:** As admin, I want to manage categories and menu items so customers can browse current offerings.
 
-- [ ] **Task 2.1:** Implement Menu Categories API (CRUD) & Admin UI (`/dashboard/menu/categories`).
-- [ ] **Task 2.2:** Implement Menu Items API (CRUD) & Admin UI (`/dashboard/menu`).
-- [ ] **Task 2.3:** Create public menu viewer page (`/menu`) and search/filter.
+- [x] **Task 2.1:** Implement Menu Categories API (CRUD) & Admin UI (`/dashboard/menu/categories`).
+- [x] **Task 2.2:** Implement Menu Items API (CRUD) & Admin UI (`/dashboard/menu`).
+- [x] **Task 2.3:** Create public menu viewer page (`/menu`) and search/filter.
 
 **Acceptance Criteria:**
 - Admin can create, read, update, delete (CRUD) categories.
@@ -45,8 +45,8 @@
 ## User Story 3: Table Layout & Status (US-3)
 **Description:** As waiter, I want to view and manage restaurant tables so I know which seats are free.
 
-- [ ] **Task 3.1:** Implement Tables API (CRUD) & Dashboard UI (`/dashboard/tables`).
-- [ ] **Task 3.2:** Build table availability layout grid showing status (`free`, `occupied`, `reserved`).
+- [x] **Task 3.1:** Implement Tables API (CRUD) & Dashboard UI (`/dashboard/tables`).
+- [x] **Task 3.2:** Build table availability layout grid showing status (`free`, `occupied`, `reserved`).
 
 **Acceptance Criteria:**
 - Staff can add, update table status, and delete tables.
