@@ -4,27 +4,40 @@ import { apiFetch } from '@/lib/api';
 
 export default function ReservationsManager() {
   const [bookings, setBookings] = useState([]);
+  const [tables, setTables] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [statusFilter, setStatusFilter] = useState('pending');
   const [updatingId, setUpdatingId] = useState(null);
 
-  async function loadBookings() {
+  // Seating guest selection state
+  const [seatingBooking, setSeatingBooking] = useState(null);
+  const [selectedTableId, setSelectedTableId] = useState('');
+
+  async function loadData() {
     try {
-      const response = await apiFetch('/api/reservations');
-      if (response.success) {
-        setBookings(response.data);
+      const [bookingsRes, tablesRes] = await Promise.all([
+        apiFetch('/api/reservations'),
+        apiFetch('/api/tables')
+      ]);
+
+      if (bookingsRes.success) {
+        setBookings(bookingsRes.data);
+      }
+      if (tablesRes.success) {
+        // Only fetch free tables for selection
+        setTables(tablesRes.data.filter(t => t.status === 'free'));
       }
     } catch (err) {
       console.error(err);
-      setError('Could not retrieve reservations log');
+      setError('Could not retrieve reservations data');
     } finally {
       setLoading(false);
     }
   }
 
   useEffect(() => {
-    loadBookings();
+    loadData();
   }, []);
 
   const handleStatusChange = async (id, nextStatus) => {
@@ -38,7 +51,7 @@ export default function ReservationsManager() {
       });
 
       if (response.success) {
-        loadBookings();
+        loadData();
       }
     } catch (err) {
       setError(err.message || 'Failed to update booking status');
@@ -47,10 +60,41 @@ export default function ReservationsManager() {
     }
   };
 
+  const handleSeatGuest = async (e) => {
+    e.preventDefault();
+    if (!selectedTableId) return;
+    setUpdatingId(seatingBooking._id);
+    setError('');
+
+    try {
+      const response = await apiFetch(`/api/reservations/${seatingBooking._id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: 'seated', tableId: selectedTableId })
+      });
+
+      if (response.success) {
+        setSeatingBooking(null);
+        setSelectedTableId('');
+        loadData();
+        document.getElementById('seat_guest_modal').close();
+      }
+    } catch (err) {
+      setError(err.message || 'Failed to seat guest');
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
+  const openSeatingModal = (book) => {
+    setSeatingBooking(book);
+    document.getElementById('seat_guest_modal').showModal();
+  };
+
   const getStatusColor = (status) => {
     switch (status) {
       case 'confirmed': return 'badge-success';
       case 'cancelled': return 'badge-error';
+      case 'seated': return 'badge-info';
       default: return 'badge-warning';
     }
   };
@@ -67,9 +111,14 @@ export default function ReservationsManager() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold text-base-content font-display">Reservations Manager</h1>
-        <p className="text-sm text-base-content/70 mt-1">Review table booking requests and update status details</p>
+      <div className="flex justify-between items-center">
+        <div>
+          <h1 className="text-3xl font-bold text-base-content font-display">Reservations Manager</h1>
+          <p className="text-sm text-base-content/70 mt-1">Review table booking requests and seat guests upon arrival</p>
+        </div>
+        <button className="btn btn-outline" onClick={loadData}>
+          Refresh List
+        </button>
       </div>
 
       {error && (
@@ -82,6 +131,7 @@ export default function ReservationsManager() {
       <div className="tabs tabs-boxed bg-base-100 p-2 shadow border border-base-300">
         <button className={`tab font-semibold ${statusFilter === 'pending' ? 'tab-active' : ''}`} onClick={() => setStatusFilter('pending')}>Pending Requests</button>
         <button className={`tab font-semibold ${statusFilter === 'confirmed' ? 'tab-active' : ''}`} onClick={() => setStatusFilter('confirmed')}>Confirmed</button>
+        <button className={`tab font-semibold ${statusFilter === 'seated' ? 'tab-active' : ''}`} onClick={() => setStatusFilter('seated')}>Seated Guests</button>
         <button className={`tab font-semibold ${statusFilter === 'cancelled' ? 'tab-active' : ''}`} onClick={() => setStatusFilter('cancelled')}>Cancelled</button>
       </div>
 
@@ -136,10 +186,53 @@ export default function ReservationsManager() {
                   </button>
                 </div>
               )}
+
+              {book.status === 'confirmed' && (
+                <div className="flex gap-2 pt-2">
+                  <button 
+                    className="btn btn-sm btn-outline btn-error flex-none"
+                    onClick={() => handleStatusChange(book._id, 'cancelled')}
+                    disabled={updatingId === book._id}
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    className="btn btn-sm btn-primary flex-1"
+                    onClick={() => openSeatingModal(book)}
+                    disabled={updatingId === book._id}
+                  >
+                    Seat Guest
+                  </button>
+                </div>
+              )}
             </div>
           ))}
         </div>
       )}
+
+      {/* Seat Guest Table Selector Modal */}
+      <dialog id="seat_guest_modal" className="modal">
+        <div className="modal-box">
+          <form method="dialog">
+            <button className="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">✕</button>
+          </form>
+          <h3 className="font-bold text-lg text-primary mb-6">Assign Table to Seated Guest</h3>
+          <form onSubmit={handleSeatGuest} className="space-y-4 font-semibold text-sm">
+            <div className="form-control">
+              <label className="label"><span className="label-text">Select Table</span></label>
+              <select className="select select-bordered w-full" value={selectedTableId} onChange={e => setSelectedTableId(e.target.value)} required>
+                <option value="">Choose Table</option>
+                {tables.map(t => (
+                  <option key={t._id} value={t._id}>Table T-{t.number} (Cap: {t.capacity}) - {t.location}</option>
+                ))}
+              </select>
+            </div>
+            <button type="submit" className="btn btn-primary w-full mt-6" disabled={updatingId !== null}>
+              {updatingId !== null ? <span className="loading loading-spinner"></span> : 'Seat Guest & Occupy Table'}
+            </button>
+          </form>
+        </div>
+      </dialog>
     </div>
   );
 }

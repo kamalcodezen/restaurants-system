@@ -828,22 +828,79 @@ app.get('/api/reservations', requireAuth, async (req, res) => {
 app.patch('/api/reservations/:id', requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
-    const { status } = req.body;
+    const { status, tableId } = req.body;
 
-    if (!['confirmed', 'cancelled'].includes(status)) {
+    if (!['confirmed', 'cancelled', 'seated'].includes(status)) {
       return res.status(400).json({ success: false, error: 'Invalid reservation status' });
     }
 
-    const result = await db.collection('reservations').updateOne(
-      { _id: new ObjectId(id) },
-      { $set: { status, updatedAt: new Date() } }
-    );
-
-    if (result.matchedCount === 0) {
+    const reservation = await db.collection('reservations').findOne({ _id: new ObjectId(id) });
+    if (!reservation) {
       return res.status(404).json({ success: false, error: 'Reservation not found' });
     }
 
+    const updates = { status, updatedAt: new Date() };
+
+    if (status === 'seated') {
+      if (!tableId) {
+        return res.status(400).json({ success: false, error: 'Table ID is required to seat guest' });
+      }
+      updates.tableId = new ObjectId(tableId);
+
+      const table = await db.collection('tables').findOne({ _id: new ObjectId(tableId) });
+      if (!table) {
+        return res.status(404).json({ success: false, error: 'Table not found' });
+      }
+      if (table.status !== 'free') {
+        return res.status(400).json({ success: false, error: 'Selected table is occupied or reserved' });
+      }
+
+      await db.collection('tables').updateOne(
+        { _id: new ObjectId(tableId) },
+        { $set: { status: 'occupied', updatedAt: new Date() } }
+      );
+    }
+
+    await db.collection('reservations').updateOne(
+      { _id: new ObjectId(id) },
+      { $set: updates }
+    );
+
     res.json({ success: true, message: `Reservation status updated to ${status}` });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Get restaurant settings
+app.get('/api/settings', async (req, res) => {
+  try {
+    const settings = await db.collection('restaurantSettings').findOne({});
+    res.json({ success: true, data: settings });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Update restaurant settings (Admin only)
+app.patch('/api/settings', requireAuth, requireRole(['admin']), async (req, res) => {
+  try {
+    const { name, tagline, phone, address, taxRate } = req.body;
+
+    const updates = { updatedAt: new Date() };
+    if (name !== undefined) updates.name = name;
+    if (tagline !== undefined) updates.tagline = tagline;
+    if (phone !== undefined) updates.phone = phone;
+    if (address !== undefined) updates.address = address;
+    if (taxRate !== undefined) updates.taxRate = Number(taxRate);
+
+    await db.collection('restaurantSettings').updateOne(
+      {},
+      { $set: updates }
+    );
+
+    const updated = await db.collection('restaurantSettings').findOne({});
+    res.json({ success: true, data: updated });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
