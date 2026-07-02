@@ -4,7 +4,7 @@
 - **[x] Batch 1:** System Setup & Authentication (US-1) - **100% Complete**
 - **[x] Batch 2:** Menu & Table Management (US-2, US-3) - **100% Complete**
 - **[x] Batch 3:** Ordering & Kitchen Queue (US-4, US-5) - **100% Complete**
-- **[ ] Batch 4:** Billing & Reservations (US-6, US-7) - **0% Complete**
+- **[x] Batch 4:** Billing & Reservations (US-6, US-7) - **100% Complete**
 
 ---
 
@@ -86,9 +86,9 @@
 ## User Story 6: Billing & Payments (US-6)
 **Description:** As cashier, I want to generate invoices and collect payment so the table can be freed for new guests.
 
-- [ ] **Task 6.1:** Implement Bill generation API (calculates subtotal, tax %, total) on status `served`.
-- [ ] **Task 6.2:** Create dashboard billing list (`/dashboard/billing`) and pay view (`/dashboard/billing/[id]`).
-- [ ] **Task 6.3:** Integrate mark-paid control (cash/card flag) that updates order status to `billed` and sets table `free`.
+- [x] **Task 6.1:** Implement Bill generation API (calculates subtotal, tax %, total) on status `served`.
+- [x] **Task 6.2:** Create dashboard billing list (`/dashboard/billing`) and pay view (`/dashboard/billing/[id]`).
+- [x] **Task 6.3:** Integrate mark-paid control (cash/card flag) that updates order status to `billed` and sets table `free`.
 
 **Acceptance Criteria:**
 - Invoices snapshot items exactly.
@@ -100,9 +100,9 @@
 ## User Story 7: Table Reservations (US-7)
 **Description:** As customer, I want to book a table online so that I have a guaranteed seat when I arrive.
 
-- [ ] **Task 7.1:** Create public reservation form (`/reserve`) and success redirection.
-- [ ] **Task 7.2:** Build dashboard reservation manager (`/dashboard/reservations`) with accept, assign table, and cancel controls.
-- [ ] **Task 7.3:** Implement reservation seated action that marks guest arrived and sets table status to `occupied`.
+- [x] **Task 7.1:** Create public reservation form (`/reserve`) and success redirection.
+- [x] **Task 7.2:** Build dashboard reservation manager (`/dashboard/reservations`) with accept, assign table, and cancel controls.
+- [x] **Task 7.3:** Implement reservation seated action that marks guest arrived and sets table status to `occupied`.
 
 **Acceptance Criteria:**
 - Reservation status starts as `pending`.

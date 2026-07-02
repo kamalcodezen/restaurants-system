@@ -681,6 +681,174 @@ app.patch('/api/orders/:id/status', requireAuth, async (req, res) => {
   }
 });
 
+// Get all bills (staff only)
+app.get('/api/bills', requireAuth, async (req, res) => {
+  try {
+    const bills = await db.collection('bills').find().sort({ createdAt: -1 }).toArray();
+    res.json({ success: true, data: bills });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Get or initialize a bill for an order ID
+app.get('/api/bills/order/:orderId', requireAuth, async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    
+    let bill = await db.collection('bills').findOne({ orderId: new ObjectId(orderId) });
+    if (bill) {
+      return res.json({ success: true, data: bill });
+    }
+
+    const order = await db.collection('orders').findOne({ _id: new ObjectId(orderId) });
+    if (!order) {
+      return res.status(404).json({ success: false, error: 'Order not found' });
+    }
+
+    const subtotal = order.subtotal;
+    const taxRate = 0.10; // 10% tax rate
+    const tax = subtotal * taxRate;
+    const total = subtotal + tax;
+
+    bill = {
+      orderId: new ObjectId(orderId),
+      orderNumber: order.orderNumber,
+      type: order.type,
+      tableId: order.tableId,
+      subtotal,
+      tax,
+      total,
+      status: 'unpaid',
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+
+    const result = await db.collection('bills').insertOne(bill);
+    res.json({ success: true, data: { ...bill, _id: result.insertedId } });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Pay a bill
+app.post('/api/bills/:id/pay', requireAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { paymentMethod } = req.body;
+
+    if (!paymentMethod) {
+      return res.status(400).json({ success: false, error: 'Payment method is required' });
+    }
+
+    const bill = await db.collection('bills').findOne({ _id: new ObjectId(id) });
+    if (!bill) {
+      return res.status(404).json({ success: false, error: 'Bill not found' });
+    }
+
+    if (bill.status === 'paid') {
+      return res.status(400).json({ success: false, error: 'Bill is already paid' });
+    }
+
+    const session = await auth.api.getSession({
+      headers: req.headers
+    });
+    const cashierId = session?.user?.id ? new ObjectId(session.user.id) : null;
+
+    await db.collection('bills').updateOne(
+      { _id: new ObjectId(id) },
+      { 
+        $set: { 
+          status: 'paid', 
+          paymentMethod, 
+          cashierId,
+          paidAt: new Date(), 
+          updatedAt: new Date() 
+        } 
+      }
+    );
+
+    await db.collection('orders').updateOne(
+      { _id: bill.orderId },
+      { $set: { status: 'billed', updatedAt: new Date() } }
+    );
+
+    if (bill.type === 'dine-in' && bill.tableId) {
+      await db.collection('tables').updateOne(
+        { _id: bill.tableId },
+        { $set: { status: 'free', updatedAt: new Date() } }
+      );
+    }
+
+    res.json({ success: true, message: 'Payment recorded successfully' });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Public: Create reservation
+app.post('/api/reservations', async (req, res) => {
+  try {
+    const { customerName, customerPhone, date, time, partySize, notes } = req.body;
+
+    if (!customerName || !customerPhone || !date || !time || !partySize) {
+      return res.status(400).json({ success: false, error: 'Missing required reservation fields' });
+    }
+
+    const newReservation = {
+      customerName,
+      customerPhone,
+      date,
+      time,
+      partySize: Number(partySize),
+      notes: notes || '',
+      status: 'pending',
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+
+    const result = await db.collection('reservations').insertOne(newReservation);
+    res.json({ success: true, data: { ...newReservation, _id: result.insertedId } });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Staff: Get all reservations
+app.get('/api/reservations', requireAuth, async (req, res) => {
+  try {
+    const reservations = await db.collection('reservations').find().sort({ date: 1, time: 1 }).toArray();
+    res.json({ success: true, data: reservations });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Staff: Update reservation status
+app.patch('/api/reservations/:id', requireAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    if (!['confirmed', 'cancelled'].includes(status)) {
+      return res.status(400).json({ success: false, error: 'Invalid reservation status' });
+    }
+
+    const result = await db.collection('reservations').updateOne(
+      { _id: new ObjectId(id) },
+      { $set: { status, updatedAt: new Date() } }
+    );
+
+    if (result.matchedCount === 0) {
+      return res.status(404).json({ success: false, error: 'Reservation not found' });
+    }
+
+    res.json({ success: true, message: `Reservation status updated to ${status}` });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 
 // Seed Function for Settings
 const seedSettings = async () => {
