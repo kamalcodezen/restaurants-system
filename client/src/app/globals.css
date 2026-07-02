@@ -1,0 +1,37 @@
+@import "tailwindcss";
+@plugin "daisyui" {
+  themes: sweetrose --default;
+}
+
+@plugin "daisyui/theme" {
+  name: "sweetrose";
+  --color-primary: #d83a56;
+  --color-primary-content: #ffffff;
+  --color-secondary: #ff6b8b;
+  --color-secondary-content: #2d1519;
+  --color-accent: #ffe3e8;
+  --color-accent-content: #2d1519;
+  --color-neutral: #382025;
+  --color-neutral-content: #ffffff;
+  --color-base-100: #fffcfd;
+  --color-base-200: #fff0f3;
+  --color-base-300: #ffe3e8;
+  --color-base-content: #2d1519;
+}
+
+@theme inline {
+  --font-sans: var(--font-jakarta), sans-serif;
+  --font-display: var(--font-outfit), sans-serif;
+}
+
+body {
+  background-color: var(--color-base-100);
+  color: var(--color-base-content);
+  font-family: var(--font-sans);
+}
+
+h1, h2, h3, h4, h5, h6, .font-display {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
