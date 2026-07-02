@@ -1,5 +1,13 @@
 # Task Management Backlog
 
+## Batches Progress Tracker
+- **[x] Batch 1:** System Setup & Authentication (US-1) - **100% Complete**
+- **[ ] Batch 2:** Menu & Table Management (US-2, US-3) - **0% Complete**
+- **[ ] Batch 3:** Ordering & Kitchen Queue (US-4, US-5) - **0% Complete**
+- **[ ] Batch 4:** Billing & Reservations (US-6, US-7) - **0% Complete**
+
+---
+
 ## User Story 1: System Setup & Authentication (US-1)
 **Description:** As staff, I want to log in securely so that I can access roles-based dashboard features.
 
